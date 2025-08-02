@@ -6,24 +6,37 @@ from telegram import Bot
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
-# === Настройки из переменных окружения (.env или Render) ===
+# === Настройки из переменных окружения ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-MESSAGE_THREAD_ID = int(os.getenv("MESSAGE_THREAD_ID", 0))
-CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 60))
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+THREAD_ID = int(os.getenv("MESSAGE_THREAD_ID", 0))
+INTERVAL = int(os.getenv("CHECK_INTERVAL", 60))
 
 bot = Bot(token=BOT_TOKEN)
 last_link = None
 first_run = True
 
-# === Получение свежих новостей с Investing.com ===
+# === Получение новостей с Investing.com ===
 def get_forex_news():
     print("📡 Получаем новости с Investing.com...", flush=True)
 
     try:
         scraper = cloudscraper.create_scraper()
         url = "https://ru.investing.com/news/forex-news"
-        response = scraper.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/115.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Language": "ru,en;q=0.9",
+            "Referer": "https://ru.investing.com/"
+        }
+
+        response = scraper.get(url, headers=headers, timeout=10)
 
         if response.status_code != 200:
             print(f"❌ Ошибка загрузки: {response.status_code}", flush=True)
@@ -49,7 +62,7 @@ def get_forex_news():
         print("❌ Ошибка при получении новостей:", e, flush=True)
         return []
 
-# === Отправка новости в Telegram ===
+# === Отправка новостей в Telegram ===
 async def send_news(news_list):
     global last_link, first_run
 
@@ -60,15 +73,15 @@ async def send_news(news_list):
         msg = f"📰 <b>{title}</b>\n{link}"
         try:
             await bot.send_message(
-                chat_id=TELEGRAM_CHAT_ID,
+                chat_id=CHAT_ID,
                 text=msg,
                 parse_mode="HTML",
-                message_thread_id=MESSAGE_THREAD_ID
+                message_thread_id=THREAD_ID
             )
             print(f"✅ Отправлено: {title}", flush=True)
             last_link = link
             if first_run:
-                break  # отправим только одну при первом запуске
+                break  # только первая при старте
         except Exception as e:
             print("❌ Ошибка отправки:", e, flush=True)
 
@@ -76,12 +89,16 @@ async def send_news(news_list):
 
 # === Основной цикл ===
 async def main():
+    if not CHAT_ID:
+        print("❌ Ошибка при запуске бота: Chat_id is empty", flush=True)
+        return
+
     try:
         await bot.send_message(
-            chat_id=TELEGRAM_CHAT_ID,
-            text="🤖 Бот по Investing.com Forex запущен",
+            chat_id=CHAT_ID,
+            text="Ludoman Group",
             parse_mode="HTML",
-            message_thread_id=MESSAGE_THREAD_ID
+            message_thread_id=THREAD_ID
         )
     except Exception as e:
         print("❌ Ошибка при запуске бота:", e, flush=True)
@@ -90,7 +107,7 @@ async def main():
         try:
             news = get_forex_news()
             await send_news(news)
-            await asyncio.sleep(CHECK_INTERVAL)
+            await asyncio.sleep(INTERVAL)
         except Exception as e:
             print("❌ Ошибка в основном цикле:", e, flush=True)
             await asyncio.sleep(30)
