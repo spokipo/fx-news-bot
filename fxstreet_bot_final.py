@@ -9,12 +9,12 @@ import threading
 TELEGRAM_BOT_TOKEN = "8374044886:AAHaI_LNKeW90A5sOYA_uzs5nfxVWBoM2us"
 TELEGRAM_CHAT_ID = "-1002518445518"
 MESSAGE_THREAD_ID = 15998
-CHECK_INTERVAL = 60  # интервал в секундах
+CHECK_INTERVAL = 60  # интервал проверки (в секундах)
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 last_sent_link = None
 
-# === ПАРСИНГ САЙТА FXSTREET ===
+# === ПОЛУЧЕНИЕ НОВОСТЕЙ ===
 def get_latest_news():
     print("📡 Получаем страницу новостей...", flush=True)
 
@@ -27,21 +27,22 @@ def get_latest_news():
             return None
 
         soup = BeautifulSoup(response.text, "html.parser")
-        links = soup.find_all("a", href=True)
+        news_items = soup.select("div.news-feed__item a")
 
-        for el in links:
-            href = el["href"]
+        print(f"🔎 Найдено элементов: {len(news_items)}", flush=True)
+
+        for el in news_items:
+            href = el.get("href")
             title = el.get_text(strip=True)
 
-            # Проверка на формат ссылки новости
-            if not href.startswith("/news/") or not title:
+            if not href or not title:
                 continue
 
             full_url = "https://www.fxstreet.ru.com" + href
-            print(f"🔗 Найдена новость: {title} → {full_url}", flush=True)
-            return title, full_url  # возвращаем только первую найденную новость
+            print(f"✅ Новость: {title} → {full_url}", flush=True)
+            return title, full_url  # возвращаем первую новость
 
-        print("❗ Не найдено подходящих новостей", flush=True)
+        print("❗ Новости не найдены", flush=True)
         return None
 
     except Exception as e:
