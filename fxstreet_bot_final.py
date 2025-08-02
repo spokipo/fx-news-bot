@@ -8,17 +8,14 @@ import threading
 # === НАСТРОЙКИ ===
 TELEGRAM_BOT_TOKEN = "8374044886:AAHaI_LNKeW90A5sOYA_uzs5nfxVWBoM2us"
 TELEGRAM_CHAT_ID = "-1002518445518"
-MESSAGE_THREAD_ID = 15998
-CHECK_INTERVAL = 60  # интервал проверки (в секундах)
+CHECK_INTERVAL = 60  # интервал (пока не используется)
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
-# === ГЛОБАЛЬНАЯ ПАМЯТЬ ===
-last_link = None
-first_run = True
-
-# === ПОЛУЧЕНИЕ НОВОСТЕЙ ===
+# === ПАРСИНГ НОВОСТЕЙ ===
 def get_news():
+    print("📡 Вызов get_news()")
+
     url = "https://www.fxstreet.ru.com/news"
     headers = {"User-Agent": "Mozilla/5.0"}
 
@@ -43,70 +40,49 @@ def get_news():
             if not href.startswith("/news/"):
                 continue
 
-            link = "https://www.fxstreet.ru.com" + href
-            news.append((title, link))
+            full_link = "https://www.fxstreet.ru.com" + href
+            news.append((title, full_link))
 
         print(f"💬 Найдено новостей: {len(news)}")
-        for title, link in news:
-            print("🔗", title, "=>", link)
+        for t, l in news:
+            print("🔗", t, "=>", l)
 
         return news
 
     except Exception as e:
-        print("Ошибка при получении новостей:", e)
+        print("❌ Ошибка при получении новостей:", e)
         return []
 
-# === ОТПРАВКА НОВОСТЕЙ ===
-async def send_news(news_list):
-    global last_link, first_run
-
-    news_list = list(reversed(news_list))  # от старых к новым
-
-    for title, link in news_list:
-        if link == last_link:
-            continue  # уже отправлено
-
-        msg = f"📰 <b>{title}</b>\n{link}"
-        print("📤 Отправка новости:", title)
-
-        try:
-            await bot.send_message(
-                chat_id=TELEGRAM_CHAT_ID,
-                text=msg,
-                parse_mode="HTML",
-                message_thread_id=MESSAGE_THREAD_ID
-            )
-            last_link = link
-            await asyncio.sleep(1)
-        except Exception as e:
-            print("Ошибка отправки:", e)
-
-        if first_run:
-            break  # при первом запуске — только одну
-
-    first_run = False
-
-# === ОСНОВНОЙ ЦИКЛ ===
+# === ОСНОВНОЙ ЦИКЛ (отладочный) ===
 async def main():
+    print("✅ main() запущен")
+
     try:
         await bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
-            text="✅ FXStreet Бот запущен и следит за новостями.",
-            parse_mode="HTML",
-            message_thread_id=MESSAGE_THREAD_ID
+            text="✅ FXStreet Бот стартует отладку",
+            parse_mode="HTML"
         )
     except Exception as e:
-        print("Ошибка при запуске бота:", e)
+        print("❌ Ошибка при запуске:", e)
 
-    while True:
-        try:
-            news = get_news()
-            if news:
-                await send_news(news)
-            await asyncio.sleep(CHECK_INTERVAL)
-        except Exception as e:
-            print("Ошибка в основном цикле:", e)
-            await asyncio.sleep(30)
+    print("📡 Вызываем get_news()...")
+    news = get_news()
+    print("📦 Получено:", len(news), "новостей")
+
+    for title, link in news:
+        print("🔗", title, "=>", link)
+
+    try:
+        await bot.send_message(
+            chat_id=TELEGRAM_CHAT_ID,
+            text=f"🧪 Найдено <b>{len(news)}</b> новостей.",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        print("❌ Ошибка при отправке результата:", e)
+
+    await asyncio.sleep(3600)  # оставим процесс живым
 
 # === HTTP-СЕРВЕР ДЛЯ RENDER ===
 class DummyHandler(BaseHTTPRequestHandler):
@@ -121,10 +97,13 @@ class DummyHandler(BaseHTTPRequestHandler):
 
 def run_http_server():
     server = HTTPServer(('0.0.0.0', 10000), DummyHandler)
-    print("🌐 HTTP-сервер запущен на порту 10000")
+    print("🌐 HTTP-сервер запущен")
     server.serve_forever()
 
 # === ЗАПУСК ===
 if __name__ == "__main__":
     threading.Thread(target=run_http_server).start()
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        print("❌ Глобальная ошибка:", e)
