@@ -1,4 +1,4 @@
-import requests
+import cloudscraper
 from bs4 import BeautifulSoup
 import time
 import asyncio
@@ -10,21 +10,22 @@ import threading
 TELEGRAM_BOT_TOKEN = "8374044886:AAHaI_LNKeW90A5sOYA_uzs5nfxVWBoM2us"
 TELEGRAM_CHAT_ID = "-1002518445518"
 MESSAGE_THREAD_ID = 15998
-CHECK_INTERVAL = 60  # интервал проверки в секундах
+CHECK_INTERVAL = 60  # Интервал проверки новостей (секунды)
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 # === ГЛОБАЛЬНАЯ ПАМЯТЬ ===
 last_link = None
-first_run = True  # при первом запуске отправим одну новость
+first_run = True
 
-# === СБОР НОВОСТЕЙ ===
+# === ПАРСИНГ НОВОСТЕЙ ===
 def get_news():
     url = "https://www.fxstreet.ru.com/news"
     headers = {"User-Agent": "Mozilla/5.0"}
 
     try:
-        resp = requests.get(url, headers=headers, timeout=10)
+        scraper = cloudscraper.create_scraper()
+        resp = scraper.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(resp.text, "html.parser")
 
         news_items = soup.select("div.news-feed__item a")
@@ -34,7 +35,15 @@ def get_news():
             title = el.get_text(strip=True)
             href = el.get("href")
 
-            if href and not href.startswith("http"):
+            if not href:
+                continue
+
+            # Пропускаем не-новости
+            if "/news/" not in href:
+                continue
+
+            # Формируем абсолютную ссылку
+            if not href.startswith("http"):
                 link = "https://www.fxstreet.ru.com" + href
             else:
                 link = href
@@ -42,7 +51,7 @@ def get_news():
             if title and link:
                 news.append((title, link))
 
-        return news  # Список от новой к старой
+        return news  # От новых к старым (как на сайте)
     except Exception as e:
         print("Ошибка при получении новостей:", e)
         return []
@@ -51,14 +60,15 @@ def get_news():
 async def send_news(news_list):
     global last_link, first_run
 
-    # Отправляем от старой к новой (чтобы не было наоборот)
-    news_list = list(reversed(news_list))
+    news_list = list(reversed(news_list))  # От старых к новым
 
     for title, link in news_list:
         if link == last_link:
-            continue  # Уже отправлено
+            continue  # Уже отправляли
 
         msg = f"📰 <b>{title}</b>\n{link}"
+        print("Отправляем:", title)
+
         try:
             await bot.send_message(
                 chat_id=TELEGRAM_CHAT_ID,
@@ -66,20 +76,18 @@ async def send_news(news_list):
                 parse_mode="HTML",
                 message_thread_id=MESSAGE_THREAD_ID
             )
-            last_link = link  # Сохраняем после успешной отправки
+            last_link = link
             await asyncio.sleep(1)
         except Exception as e:
             print("Ошибка отправки:", e)
 
         if first_run:
-            break  # Отправим только одну новость при первом запуске
+            break  # Только одну новость при старте
 
     first_run = False
 
 # === ОСНОВНОЙ ЦИКЛ ===
 async def main():
-    global last_link
-
     try:
         await bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
@@ -93,10 +101,9 @@ async def main():
     while True:
         try:
             news = get_news()
+            print(f"🔄 Найдено новостей: {len(news)}")
             if news:
                 await send_news(news)
-            else:
-                print("🔄 Новостей нет.")
             await asyncio.sleep(CHECK_INTERVAL)
         except Exception as e:
             print("Ошибка в цикле:", e)
