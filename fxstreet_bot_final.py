@@ -42,8 +42,7 @@ def get_news():
             if title and link:
                 news.append((title, link))
 
-        return news
-
+        return news  # Список от новой к старой
     except Exception as e:
         print("Ошибка при получении новостей:", e)
         return []
@@ -52,9 +51,12 @@ def get_news():
 async def send_news(news_list):
     global last_link, first_run
 
+    # Отправляем от старой к новой (чтобы не было наоборот)
+    news_list = list(reversed(news_list))
+
     for title, link in news_list:
-        if not first_run and link == last_link:
-            break  # Остальные уже были отправлены
+        if link == last_link:
+            continue  # Уже отправлено
 
         msg = f"📰 <b>{title}</b>\n{link}"
         try:
@@ -64,7 +66,7 @@ async def send_news(news_list):
                 parse_mode="HTML",
                 message_thread_id=MESSAGE_THREAD_ID
             )
-            last_link = link  # Сохраняем ТОЛЬКО после успешной отправки
+            last_link = link  # Сохраняем после успешной отправки
             await asyncio.sleep(1)
         except Exception as e:
             print("Ошибка отправки:", e)
