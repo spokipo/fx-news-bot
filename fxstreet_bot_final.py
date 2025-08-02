@@ -6,20 +6,18 @@ from telegram import Bot
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
-# === Конфигурация из переменных окружения ===
+# === Конфигурация из Render Environment ===
 TELEGRAM_BOT_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("CHAT_ID")
 MESSAGE_THREAD_ID = int(os.getenv("MESSAGE_THREAD_ID", "0"))
-CHECK_INTERVAL = 60  # секунд
+CHECK_INTERVAL = 60  # в секундах
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
-
-# === Глобальное хранилище последней отправленной ссылки ===
 last_sent_link = None
 first_run = True
 
 
-# === Получение последней новости ===
+# === Получение самой свежей новости ===
 def get_latest_news():
     print("📡 Получаем страницу новостей...", flush=True)
 
@@ -32,27 +30,34 @@ def get_latest_news():
             return None
 
         soup = BeautifulSoup(response.text, "html.parser")
-        news_blocks = soup.select("div.news-feed__item a[href]")
 
-        print(f"🔍 Найдено новостей: {len(news_blocks)}", flush=True)
+        # Находим первый редакционный блок с заголовком
+        block = soup.find("div", class_="editorialhighlight_medium")
+        if not block:
+            print("❗ Блок editorialhighlight_medium не найден", flush=True)
+            return None
 
-        for link_tag in news_blocks:
-            title = link_tag.get_text(strip=True)
-            href = link_tag['href']
+        h3 = block.find("h3", class_="fxs_headline_small")
+        if not h3:
+            print("❗ Заголовок не найден", flush=True)
+            return None
 
-            if not title or not href:
-                continue
+        link_tag = h3.find("a", href=True)
+        if not link_tag:
+            print("❗ Ссылка не найдена", flush=True)
+            return None
 
-            if "/news/" not in href:
-                continue  # отсекаем лишнее
+        title = link_tag.text.strip()
+        href = link_tag['href'].strip()
 
-            full_link = href if href.startswith("http") else f"https://www.fxstreet.ru.com{href}"
-            print(f"✅ Свежая новость: {title} → {full_link}", flush=True)
+        if not title or not href:
+            print("❗ Неполные данные новости", flush=True)
+            return None
 
-            return {"title": title, "url": full_link}
+        full_url = href if href.startswith("http") else f"https://www.fxstreet.ru.com{href}"
 
-        print("❗ Не найдено валидных новостей", flush=True)
-        return None
+        print(f"✅ Найдена новость: {title} → {full_url}", flush=True)
+        return {"title": title, "url": full_url}
 
     except Exception as e:
         print("❌ Ошибка в get_latest_news():", e, flush=True)
@@ -64,10 +69,11 @@ async def send_news(title, url):
     global last_sent_link
 
     if url == last_sent_link:
-        print("🔁 Эта новость уже была отправлена", flush=True)
+        print("🔁 Новость уже была отправлена", flush=True)
         return
 
     message = f"📰 <b>{title}</b>\n{url}"
+
     try:
         await bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
@@ -75,10 +81,10 @@ async def send_news(title, url):
             parse_mode="HTML",
             message_thread_id=MESSAGE_THREAD_ID
         )
-        print("📬 Отправлено в Telegram", flush=True)
+        print("📬 Новость отправлена в Telegram", flush=True)
         last_sent_link = url
     except Exception as e:
-        print("❌ Ошибка при отправке в Telegram:", e, flush=True)
+        print("❌ Ошибка при отправке:", e, flush=True)
 
 
 # === Основной цикл ===
@@ -97,21 +103,17 @@ async def main():
 
     while True:
         news = get_latest_news()
-
         if news:
-            title, url = news["title"], news["url"]
-            await send_news(title, url)
-
+            await send_news(news["title"], news["url"])
             if first_run:
                 first_run = False
-
         else:
-            print("⏳ Новостей нет или не удалось получить", flush=True)
+            print("⏳ Нет новых новостей", flush=True)
 
         await asyncio.sleep(CHECK_INTERVAL)
 
 
-# === HTTP-сервер для Render ping ===
+# === HTTP-сервер для Render Ping ===
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
