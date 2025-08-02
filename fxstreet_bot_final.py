@@ -42,7 +42,7 @@ def send_news(news_list):
             bot.send_message(
                 chat_id=TELEGRAM_CHAT_ID,
                 text=msg,
-                parse_mode=telegram.ParseMode.HTML,
+                parse_mode="HTML",
                 message_thread_id=MESSAGE_THREAD_ID
             )
             posted_links.add(link)
