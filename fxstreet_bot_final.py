@@ -1,21 +1,25 @@
+import os
 import asyncio
 import cloudscraper
 from bs4 import BeautifulSoup
 from telegram import Bot
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
-import os
 
-# === НАСТРОЙКИ ===
+# === Конфигурация из переменных окружения ===
 TELEGRAM_BOT_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("CHAT_ID")
 MESSAGE_THREAD_ID = int(os.getenv("MESSAGE_THREAD_ID", "0"))
-CHECK_INTERVAL = 60  # в секундах
+CHECK_INTERVAL = 60  # секунд
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
-last_sent_link = None
 
-# === ПОЛУЧЕНИЕ ПОСЛЕДНЕЙ НОВОСТИ ===
+# === Глобальное хранилище последней отправленной ссылки ===
+last_sent_link = None
+first_run = True
+
+
+# === Получение последней новости ===
 def get_latest_news():
     print("📡 Получаем страницу новостей...", flush=True)
 
@@ -28,87 +32,104 @@ def get_latest_news():
             return None
 
         soup = BeautifulSoup(response.text, "html.parser")
-        news_blocks = soup.select("div.editorialhighlight_medium")
+        news_blocks = soup.select("div.news-feed__item a[href]")
 
-        print(f"🔍 Найдено блоков: {len(news_blocks)}", flush=True)
+        print(f"🔍 Найдено новостей: {len(news_blocks)}", flush=True)
 
-        for block in news_blocks:
-            link_tag = block.find("a", href=True)
-            title_tag = block.find("h3")
+        for link_tag in news_blocks:
+            title = link_tag.get_text(strip=True)
+            href = link_tag['href']
 
-            if link_tag and title_tag:
-                href = link_tag['href']
-                title = title_tag.get_text(strip=True)
-                full_link = href if href.startswith("http") else f"https://www.fxstreet.ru.com{href}"
+            if not title or not href:
+                continue
 
-                print(f"✅ Найдена новость: {title} → {full_link}", flush=True)
-                return {"title": title, "url": full_link}
+            if "/news/" not in href:
+                continue  # отсекаем лишнее
 
-        print("❗ Новости не найдены", flush=True)
+            full_link = href if href.startswith("http") else f"https://www.fxstreet.ru.com{href}"
+            print(f"✅ Свежая новость: {title} → {full_link}", flush=True)
+
+            return {"title": title, "url": full_link}
+
+        print("❗ Не найдено валидных новостей", flush=True)
         return None
 
     except Exception as e:
-        print("❌ Ошибка при получении новостей:", e, flush=True)
+        print("❌ Ошибка в get_latest_news():", e, flush=True)
         return None
 
-# === ОТПРАВКА В TELEGRAM ===
-async def send_news():
+
+# === Отправка новости в Telegram ===
+async def send_news(title, url):
     global last_sent_link
 
-    news = get_latest_news()
-    if not news:
+    if url == last_sent_link:
+        print("🔁 Эта новость уже была отправлена", flush=True)
         return
 
-    if news["url"] == last_sent_link:
-        print("⏳ Новых новостей нет", flush=True)
-        return
-
-    text = f"📰 <b>{news['title']}</b>\n{news['url']}"
+    message = f"📰 <b>{title}</b>\n{url}"
     try:
         await bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
-            text=text,
+            text=message,
             parse_mode="HTML",
             message_thread_id=MESSAGE_THREAD_ID
         )
-        print(f"📬 Отправлено в Telegram: {news['title']}", flush=True)
-        last_sent_link = news["url"]
+        print("📬 Отправлено в Telegram", flush=True)
+        last_sent_link = url
     except Exception as e:
-        print("❌ Ошибка отправки в Telegram:", e, flush=True)
+        print("❌ Ошибка при отправке в Telegram:", e, flush=True)
 
-# === ОСНОВНОЙ ЦИКЛ ===
+
+# === Основной цикл ===
 async def main():
-    print("🚀 FXStreet Бот запущен", flush=True)
+    global first_run
+
     try:
         await bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
-            text="✅ FXStreet бот запущен и следит за новостями.",
+            text="✅ Бот запущен и следит за новостями FXStreet",
             parse_mode="HTML",
             message_thread_id=MESSAGE_THREAD_ID
         )
     except Exception as e:
-        print("❌ Ошибка приветствия:", e, flush=True)
+        print("❌ Не удалось отправить стартовое сообщение:", e, flush=True)
 
     while True:
-        await send_news()
+        news = get_latest_news()
+
+        if news:
+            title, url = news["title"], news["url"]
+            await send_news(title, url)
+
+            if first_run:
+                first_run = False
+
+        else:
+            print("⏳ Новостей нет или не удалось получить", flush=True)
+
         await asyncio.sleep(CHECK_INTERVAL)
 
-# === HTTP-СЕРВЕР ДЛЯ RENDER ===
+
+# === HTTP-сервер для Render ping ===
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"FXStreet Bot is running.")
+        self.wfile.write(b"Bot is running.")
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
 
 def run_http_server():
-    server = HTTPServer(("0.0.0.0", 10000), DummyHandler)
+    server = HTTPServer(('0.0.0.0', 10000), DummyHandler)
     print("🌐 HTTP-сервер запущен на порту 10000", flush=True)
     server.serve_forever()
 
-# === ЗАПУСК ===
+
+# === Запуск ===
 if __name__ == "__main__":
     threading.Thread(target=run_http_server).start()
-    try:
-        asyncio.run(main())
-    except Exception as e:
-        print("❌ Глобальная ошибка:", e, flush=True)
+    asyncio.run(main())
