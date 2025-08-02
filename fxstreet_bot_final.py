@@ -59,5 +59,9 @@ def main():
             print(f"Ошибка в основном цикле: {e}")
             time.sleep(30)
 
+ # Запуск фейкового веб-сервера в отдельном потоке
+    threading.Thread(target=run_http_server).start()
+
+
 if __name__ == "__main__":
     main()
