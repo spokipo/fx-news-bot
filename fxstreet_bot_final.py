@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
 # === НАСТРОЙКИ из .env ===
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_BOT_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 MESSAGE_THREAD_ID = int(os.getenv("MESSAGE_THREAD_ID", 0))
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 60))
