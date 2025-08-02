@@ -26,32 +26,38 @@ def get_news():
     try:
         scraper = cloudscraper.create_scraper()
         resp = scraper.get(url, headers=headers, timeout=10)
+
+        print("📥 Ответ сервера:", resp.status_code)
+        if "Just a moment" in resp.text:
+            print("❌ Cloudflare всё ещё блокирует!")
+            return []
+
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        news_items = soup.select("div.news-feed__item a")
+        # 👉 Используем более общий селектор
+        all_links = soup.find_all("a", href=True)
         news = []
 
-        for el in news_items:
+        for el in all_links:
             title = el.get_text(strip=True)
-            href = el.get("href")
+            href = el["href"]
 
-            if not href:
+            # Пропускаем мусорные ссылки
+            if not href.startswith("/news/"):
                 continue
 
-            # Пропускаем не-новости
-            if "/news/" not in href:
-                continue
+            link = "https://www.fxstreet.ru.com" + href
+            news.append((title, link))
 
-            # Формируем абсолютную ссылку
-            if not href.startswith("http"):
-                link = "https://www.fxstreet.ru.com" + href
-            else:
-                link = href
+        print("💬 Ссылок найдено:", len(news))
+        for t, l in news:
+            print("🔗", t, "=>", l)
 
-            if title and link:
-                news.append((title, link))
+        return news
 
-        return news  # От новых к старым (как на сайте)
+    except Exception as e:
+        print("Ошибка при получении новостей:", e)
+        return []
     except Exception as e:
         print("Ошибка при получении новостей:", e)
         return []
