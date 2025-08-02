@@ -6,17 +6,17 @@ from telegram import Bot
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
-# === НАСТРОЙКИ из .env ===
-TELEGRAM_BOT_TOKEN = os.getenv("BOT_TOKEN")
+# === Настройки из .env или Render Environment ===
+BOT_TOKEN = os.getenv("BOT_TOKEN")  # ← СТАРОЕ имя переменной, как ты просил
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 MESSAGE_THREAD_ID = int(os.getenv("MESSAGE_THREAD_ID", 0))
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 60))
 
-bot = Bot(token=TELEGRAM_BOT_TOKEN)
+bot = Bot(token=BOT_TOKEN)
 last_link = None
 first_run = True
 
-# === СБОР НОВОСТЕЙ ===
+# === Получение самой свежей новости ===
 def get_latest_news():
     print("📡 Получаем страницу новостей...", flush=True)
 
@@ -54,7 +54,7 @@ def get_latest_news():
         print("❌ Ошибка в get_latest_news():", e, flush=True)
         return None
 
-# === ОТПРАВКА В ТЕЛЕГРАМ ===
+# === Отправка новости ===
 async def send_news(news):
     global last_link, first_run
 
@@ -62,7 +62,7 @@ async def send_news(news):
         return
 
     if news["url"] == last_link:
-        print("🔁 Новость уже была отправлена", flush=True)
+        print("🔁 Новость уже отправлена", flush=True)
         return
 
     msg = f"📰 <b>{news['title']}</b>\n{news['url']}"
@@ -77,12 +77,12 @@ async def send_news(news):
         print("✅ Новость отправлена", flush=True)
         last_link = news["url"]
     except Exception as e:
-        print("❌ Ошибка при отправке в Telegram:", e, flush=True)
+        print("❌ Ошибка при отправке:", e, flush=True)
 
     if first_run:
         first_run = False
 
-# === ОСНОВНОЙ ЦИКЛ ===
+# === Основной цикл ===
 async def main():
     global first_run
 
@@ -105,7 +105,7 @@ async def main():
             print("❌ Ошибка в основном цикле:", e, flush=True)
             await asyncio.sleep(30)
 
-# === HTTP-СЕРВЕР ДЛЯ RENDER ===
+# === HTTP-сервер для Render ===
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -117,7 +117,7 @@ def run_http_server():
     print("🌐 HTTP-сервер запущен на порту 10000", flush=True)
     server.serve_forever()
 
-# === ЗАПУСК ===
+# === Запуск ===
 if __name__ == "__main__":
     threading.Thread(target=run_http_server).start()
     asyncio.run(main())
