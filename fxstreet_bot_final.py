@@ -4,17 +4,18 @@ from bs4 import BeautifulSoup
 from telegram import Bot
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
+import os
 
 # === НАСТРОЙКИ ===
-TELEGRAM_BOT_TOKEN = "8374044886:AAHaI_LNKeW90A5sOYA_uzs5nfxVWBoM2us"
-TELEGRAM_CHAT_ID = "-1002518445518"
-MESSAGE_THREAD_ID = 15998
-CHECK_INTERVAL = 60  # интервал проверки (в секундах)
+TELEGRAM_BOT_TOKEN = os.getenv("BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("CHAT_ID")
+MESSAGE_THREAD_ID = int(os.getenv("MESSAGE_THREAD_ID", "0"))
+CHECK_INTERVAL = 60  # в секундах
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 last_sent_link = None
 
-# === ПОЛУЧЕНИЕ НОВОСТЕЙ ===
+# === ПОЛУЧЕНИЕ ПОСЛЕДНЕЙ НОВОСТИ ===
 def get_latest_news():
     print("📡 Получаем страницу новостей...", flush=True)
 
@@ -22,25 +23,26 @@ def get_latest_news():
         scraper = cloudscraper.create_scraper()
         response = scraper.get("https://www.fxstreet.ru.com/news", timeout=10)
 
-        if "Just a moment" in response.text or "Enable JavaScript" in response.text:
-            print("⚠️ Cloudflare всё ещё блокирует", flush=True)
+        if response.status_code != 200:
+            print(f"❌ Ошибка загрузки страницы: {response.status_code}", flush=True)
             return None
 
         soup = BeautifulSoup(response.text, "html.parser")
-        news_items = soup.select("div.news-feed__item a")
+        news_blocks = soup.select("div.editorialhighlight_medium")
 
-        print(f"🔎 Найдено элементов: {len(news_items)}", flush=True)
+        print(f"🔍 Найдено блоков: {len(news_blocks)}", flush=True)
 
-        for el in news_items:
-            href = el.get("href")
-            title = el.get_text(strip=True)
+        for block in news_blocks:
+            link_tag = block.find("a", href=True)
+            title_tag = block.find("h3")
 
-            if not href or not title:
-                continue
+            if link_tag and title_tag:
+                href = link_tag['href']
+                title = title_tag.get_text(strip=True)
+                full_link = href if href.startswith("http") else f"https://www.fxstreet.ru.com{href}"
 
-            full_url = "https://www.fxstreet.ru.com" + href
-            print(f"✅ Новость: {title} → {full_url}", flush=True)
-            return title, full_url  # возвращаем первую новость
+                print(f"✅ Найдена новость: {title} → {full_link}", flush=True)
+                return {"title": title, "url": full_link}
 
         print("❗ Новости не найдены", flush=True)
         return None
@@ -57,22 +59,20 @@ async def send_news():
     if not news:
         return
 
-    title, link = news
-
-    if link == last_sent_link:
+    if news["url"] == last_sent_link:
         print("⏳ Новых новостей нет", flush=True)
         return
 
-    message = f"📰 <b>{title}</b>\n{link}"
+    text = f"📰 <b>{news['title']}</b>\n{news['url']}"
     try:
         await bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
-            text=message,
+            text=text,
             parse_mode="HTML",
             message_thread_id=MESSAGE_THREAD_ID
         )
-        print(f"✅ Отправлено в Telegram: {title}", flush=True)
-        last_sent_link = link
+        print(f"📬 Отправлено в Telegram: {news['title']}", flush=True)
+        last_sent_link = news["url"]
     except Exception as e:
         print("❌ Ошибка отправки в Telegram:", e, flush=True)
 
@@ -87,7 +87,7 @@ async def main():
             message_thread_id=MESSAGE_THREAD_ID
         )
     except Exception as e:
-        print("❌ Ошибка при отправке приветствия:", e, flush=True)
+        print("❌ Ошибка приветствия:", e, flush=True)
 
     while True:
         await send_news()
