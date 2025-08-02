@@ -16,7 +16,7 @@ bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 # === ГЛОБАЛЬНАЯ ПАМЯТЬ ===
 last_link = None
-first_run = True  # признак первого запуска
+first_run = True  # при первом запуске отправим одну новость
 
 # === СБОР НОВОСТЕЙ ===
 def get_news():
@@ -51,27 +51,28 @@ def get_news():
 # === ОТПРАВКА НОВОСТЕЙ ===
 async def send_news(news_list):
     global last_link, first_run
+
     for title, link in news_list:
-    if not first_run and link == last_link:
-        break  # Остальные уже были отправлены
+        if not first_run and link == last_link:
+            break  # Остальные уже были отправлены
 
-    msg = f"📰 <b>{title}</b>\n{link}"
-    try:
-        await bot.send_message(
-            chat_id=TELEGRAM_CHAT_ID,
-            text=msg,
-            parse_mode="HTML",
-            message_thread_id=MESSAGE_THREAD_ID
-        )
-        last_link = link  # Сохраняем ТОЛЬКО после успешной отправки
-        await asyncio.sleep(1)
-    except Exception as e:
-        print("Ошибка отправки:", e)
+        msg = f"📰 <b>{title}</b>\n{link}"
+        try:
+            await bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text=msg,
+                parse_mode="HTML",
+                message_thread_id=MESSAGE_THREAD_ID
+            )
+            last_link = link  # Сохраняем ТОЛЬКО после успешной отправки
+            await asyncio.sleep(1)
+        except Exception as e:
+            print("Ошибка отправки:", e)
 
-    if first_run:
-        break  # Отправляем только одну новость при первом запуске
+        if first_run:
+            break  # Отправим только одну новость при первом запуске
 
-first_run = False
+    first_run = False
 
 # === ОСНОВНОЙ ЦИКЛ ===
 async def main():
