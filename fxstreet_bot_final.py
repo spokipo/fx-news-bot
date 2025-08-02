@@ -14,8 +14,9 @@ CHECK_INTERVAL = 60  # интервал проверки в секундах
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
-# === ГЛОБАЛЬНАЯ ПАМЯТЬ ПОСЛЕДНЕЙ ССЫЛКИ ===
+# === ГЛОБАЛЬНАЯ ПАМЯТЬ ===
 last_link = None
+first_run = True  # признак первого запуска
 
 # === СБОР НОВОСТЕЙ ===
 def get_news():
@@ -49,10 +50,10 @@ def get_news():
 
 # === ОТПРАВКА НОВОСТЕЙ ===
 async def send_news(news_list):
-    global last_link
+    global last_link, first_run
     for title, link in news_list:
-        if link == last_link:
-            break  # Остальные уже были отправлены
+        if not first_run and link == last_link:
+            break  # Остальные уже отправлены
 
         msg = f"📰 <b>{title}</b>\n{link}"
         try:
@@ -62,11 +63,14 @@ async def send_news(news_list):
                 parse_mode="HTML",
                 message_thread_id=MESSAGE_THREAD_ID
             )
-            if not last_link:
-                last_link = link  # сохраняем только первую ссылку (сверху страницы)
+            last_link = link  # запоминаем эту ссылку
             await asyncio.sleep(1)
         except Exception as e:
             print("Ошибка отправки:", e)
+
+        if first_run:
+            break  # при первом запуске отправляем только одну
+    first_run = False
 
 # === ОСНОВНОЙ ЦИКЛ ===
 async def main():
@@ -87,6 +91,8 @@ async def main():
             news = get_news()
             if news:
                 await send_news(news)
+            else:
+                print("🔄 Новостей нет.")
             await asyncio.sleep(CHECK_INTERVAL)
         except Exception as e:
             print("Ошибка в цикле:", e)
