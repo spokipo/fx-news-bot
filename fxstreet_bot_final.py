@@ -25,7 +25,7 @@ else:
 
 # === СБОР НОВОСТЕЙ ===
 def get_news():
-    url = "https://www.fxstreet.ru.com/news"
+    url = "https://www.fxstreet.ru.com/news?q=&hPP=13&idx=FxsIndexPro&p=0"
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
         resp = requests.get(url, headers=headers, timeout=10)
