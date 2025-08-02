@@ -1,8 +1,9 @@
-
 import requests
 from bs4 import BeautifulSoup
 import time
 import telegram
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # === НАСТРОЙКИ ===
 TELEGRAM_BOT_TOKEN = "8374044886:AAHaI_LNKeW90A5sOYA_uzs5nfxVWBoM2us"
@@ -15,38 +16,38 @@ bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
 posted_links = set()
 
 def get_news():
-    url = "https://www.fxstreet.com/ru/news"
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, "html.parser")
+    url = "https://www.fxstreet.ru.com/news"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    resp = requests.get(url, headers=headers)
+    soup = BeautifulSoup(resp.text, "html.parser")
 
-    news_items = soup.select("div.news-feed__item")
+    news_items = soup.select("div.news-feed__item, article, a")
     news = []
-
-    for item in news_items:
-        title_tag = item.select_one("a.news-feed__item__title")
-        if title_tag:
-            title = title_tag.text.strip()
-            link = "https://www.fxstreet.com" + title_tag.get("href")
-            if link not in posted_links:
-                news.append((title, link))
+    for el in news_items:
+        title_tag = el.select_one("a") or el
+        title = title_tag.get_text(strip=True)
+        href = title_tag.get("href")
+        if href and "http" not in href:
+            link = "https://www.fxstreet.ru.com" + href
+        else:
+            link = href
+        if title and link and link not in posted_links:
+            news.append((title, link))
     return news
 
 def send_news(news_list):
     for title, link in news_list:
-        message = f"📰 <b>{title}</b>\n{link}"
+        msg = f"📰 <b>{title}</b>\n{link}"
         try:
             bot.send_message(
                 chat_id=TELEGRAM_CHAT_ID,
-                text=message,
+                text=msg,
                 parse_mode=telegram.ParseMode.HTML,
                 message_thread_id=MESSAGE_THREAD_ID
             )
             posted_links.add(link)
         except Exception as e:
-            print(f"Ошибка при отправке: {e}")
+            print("Ошибка отправки:", e)
 
 def main():
     while True:
@@ -56,12 +57,30 @@ def main():
                 send_news(news)
             time.sleep(CHECK_INTERVAL)
         except Exception as e:
-            print(f"Ошибка в основном цикле: {e}")
+            print("Ошибка цикла:", e)
             time.sleep(30)
 
- # Запуск фейкового веб-сервера в отдельном потоке
-    threading.Thread(target=run_http_server).start()
+# === ФИКТИВНЫЙ HTTP-СЕРВЕР ДЛЯ RENDER ===
+class DummyHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running.")
 
+def run_http_server():
+    server = HTTPServer(('0.0.0.0', 10000), DummyHandler)
+    print("Запущен фиктивный HTTP-сервер на порту 10000")
+    server.serve_forever()
 
 if __name__ == "__main__":
+    try:
+        bot.send_message(
+            chat_id=TELEGRAM_CHAT_ID,
+            text="🚀 Бот запущен и готов к работе!",
+            message_thread_id=MESSAGE_THREAD_ID
+        )
+    except Exception as e:
+        print("Ошибка при отправке теста:", e)
+
+    threading.Thread(target=run_http_server).start()
     main()
